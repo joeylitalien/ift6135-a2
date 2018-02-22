@@ -30,6 +30,42 @@ def progress_bar(count, total, status=""):
     sys.stdout.flush()
 
 
+def format_header(m):
+    """Specify model used"""
+
+    models = ["Multilayer Perceptron", "Convolutional Neural Network"]
+    regs_norms = ["L2 regularization", "Batch normalization"]
+    hdr = models[m.model_type.value]
+    if m.regularizers["l2"]:
+        print("{} ({})".format(hdr, "L2 regularization"))
+    elif m.regularizers["dropout"]:
+        print("{} ({})".format(hdr, "Drop out"))
+    elif m.batch_norm:
+        print("{} ({})".format(hdr, "Batch normalization"))
+    else:
+        print("{} ({})".format(hdr, "Vanilla"))
+
+
+def show_learning_stats(track, train_loss, train_acc, valid_acc, test_acc):
+    """Format printing depending on tracked quantities"""
+
+    if track["valid"] and track["test"]: 
+        print("Train loss: {:.4f} -- Train acc: {:.4f} -- Val acc: {:.4f} -- Test acc: {:.4f}".format(
+            train_loss, train_acc, valid_acc, test_acc))
+
+    if track["valid"] and not track["test"]:
+        print("Train loss: {:.4f} -- Train acc: {:.4f} -- Val acc: {:.4f}".format(
+            train_loss, train_acc, valid_acc))
+
+    if not track["valid"] and track["test"]:
+        print("Train loss: {:.4f} -- Train acc: {:.4f} -- Test acc: {:.4f}".format(
+            train_loss, train_acc, test_acc))
+
+    if not track["valid"] and not track["test"]:
+        print("Train loss: {:.4f} -- Train acc: {:.4f}  ".format(
+            train_loss, train_acc))
+
+
 def unpickle_mnist(filename):
     """Load data into training/valid/test sets"""
 
@@ -70,7 +106,7 @@ class AverageMeter(object):
 
     def reset(self):
         self.val = 0
-        self.avg = 0
+        self.avg = 0.
         self.sum = 0
         self.count = 0
 
@@ -79,4 +115,3 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
-

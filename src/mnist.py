@@ -9,12 +9,14 @@ Authors:
 """
 
 from __future__ import print_function
+
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
+
 import numpy as np
 import datetime
 import collections
@@ -25,7 +27,7 @@ from utils import *
 class MLP(nn.Module):
     """Multilayer perceptron"""
 
-    def __init__(self):
+    def __init__(self, regularizers):
         super(MLP, self).__init__()
         self.model = nn.Sequential(collections.OrderedDict([
             # Layer 1
@@ -47,37 +49,74 @@ class MLP(nn.Module):
 class CNN(nn.Module):
     """Convolutional neural network"""
 
-    def __init__(self):
+    def __init__(self, batch_norm):
         super(CNN, self).__init__()
-        self.model = nn.Sequential(collections.OrderedDict([
-            # Layer 1
-            ("conv2d_1", nn.Conv2d(in_channels=1, out_channels=16, 
-                kernel_size=(3, 3), padding=1)),
-            ("dropout_1", nn.Dropout(p=0.5)),
-            ("relu_1", nn.ReLU()),
-            ("maxpool2d_1", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
-            
-            # Layer 2
-            ("conv2d_2", nn.Conv2d(in_channels=16, out_channels=32, 
-                kernel_size=(3, 3), padding=1)),
-            ("dropout_2", nn.Dropout(p=0.5)),
-            ("relu_2", nn.ReLU()),
-            ("maxpool2d_2", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
-            
-            # Layer 3
-            ("conv2d_3", nn.Conv2d(in_channels=32, out_channels=64, 
-                kernel_size=(3, 3), padding=1)),
-            ("dropout_3", nn.Dropout(p=0.5)),
-            ("relu_3", nn.ReLU()),
-            ("maxpool2d_3", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
-            
-            # Layer 4
-            ("conv2d_4", nn.Conv2d(in_channels=64, out_channels=128, 
-                kernel_size=(3, 3), padding=1)),
-            ("dropout_4", nn.Dropout(p=0.5)),
-            ("relu_4", nn.ReLU()),
-            ("maxpool2d_4", nn.MaxPool2d(kernel_size=(2, 2), stride=2))
-        ]))
+        if (batch_norm):
+            self.model = nn.Sequential(collections.OrderedDict([
+                # Layer 1
+                ("conv2d_1", nn.Conv2d(in_channels=1, out_channels=16, 
+                    kernel_size=(3, 3), padding=1)),
+                ("batchnorm2d_1", nn.BatchNorm2d(16)),
+                ("dropout_1", nn.Dropout(p=0.5)),
+                ("relu_1", nn.ReLU()),
+                ("maxpool2d_1", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+                
+                # Layer 2
+                ("conv2d_2", nn.Conv2d(in_channels=16, out_channels=32, 
+                    kernel_size=(3, 3), padding=1)),
+                ("batchnorm2d_2", nn.BatchNorm2d(32)),
+                ("dropout_2", nn.Dropout(p=0.5)),
+                ("relu_2", nn.ReLU()),
+                ("maxpool2d_2", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+                
+                # Layer 3
+                ("conv2d_3", nn.Conv2d(in_channels=32, out_channels=64, 
+                    kernel_size=(3, 3), padding=1)),
+                ("batchnorm2d_3", nn.BatchNorm2d(64)),
+                ("dropout_3", nn.Dropout(p=0.5)),
+                ("relu_3", nn.ReLU()),
+                ("maxpool2d_3", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+                
+                # Layer 4
+                ("conv2d_4", nn.Conv2d(in_channels=64, out_channels=128, 
+                    kernel_size=(3, 3), padding=1)),
+                ("batchnorm2d_4", nn.BatchNorm2d(128)),
+                ("dropout_4", nn.Dropout(p=0.5)),
+                ("relu_4", nn.ReLU()),
+                ("maxpool2d_4", nn.MaxPool2d(kernel_size=(2, 2), stride=2))
+            ]))
+        
+        else:
+            self.model = nn.Sequential(collections.OrderedDict([
+                # Layer 1
+                ("conv2d_1", nn.Conv2d(in_channels=1, out_channels=16, 
+                    kernel_size=(3, 3), padding=1)),
+                ("dropout_1", nn.Dropout(p=0.5)),
+                ("relu_1", nn.ReLU()),
+                ("maxpool2d_1", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+                
+                # Layer 2
+                ("conv2d_2", nn.Conv2d(in_channels=16, out_channels=32, 
+                    kernel_size=(3, 3), padding=1)),
+                ("dropout_2", nn.Dropout(p=0.5)),
+                ("relu_2", nn.ReLU()),
+                ("maxpool2d_2", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+                
+                # Layer 3
+                ("conv2d_3", nn.Conv2d(in_channels=32, out_channels=64, 
+                    kernel_size=(3, 3), padding=1)),
+                ("dropout_3", nn.Dropout(p=0.5)),
+                ("relu_3", nn.ReLU()),
+                ("maxpool2d_3", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+                
+                # Layer 4
+                ("conv2d_4", nn.Conv2d(in_channels=64, out_channels=128, 
+                    kernel_size=(3, 3), padding=1)),
+                ("dropout_4", nn.Dropout(p=0.5)),
+                ("relu_4", nn.ReLU()),
+                ("maxpool2d_4", nn.MaxPool2d(kernel_size=(2, 2), stride=2))
+            ]))
+
         
         # Output layer
         self.clf = nn.Linear(128, 10) 
@@ -89,12 +128,14 @@ class CNN(nn.Module):
 class MNIST():
     """Deep model for Problem 1"""
 
-    def __init__(self, learning_rate, lmbda, model_type):
+    def __init__(self, learning_rate, lmbda, model_type, regularizers, batch_norm):
         """Initialize multilayer perceptron"""
 
         self.learning_rate = learning_rate
         self.lmbda = lmbda
         self.model_type = model_type
+        self.regularizers = regularizers
+        self.batch_norm = batch_norm
         self.compile()
 
 
@@ -110,7 +151,10 @@ class MNIST():
         """Initialize model parameters"""
 
         # Choose type of model
-        self.model = CNN() if self.model_type == Net.CNN else MLP()
+        if self.model_type == Net.CNN:
+            self.model = CNN(self.batch_norm)
+        else:
+            self.model = MLP(self.regularizers)
 
         # Initialize weights
         self.model.apply(self.init_weights)
@@ -133,7 +177,7 @@ class MNIST():
         for batch_idx, (x, y) in enumerate(data_loader):
             # Forward pass
             if (self.model_type == Net.CNN):
-                x, y = Variable(x).view(data_loader.batch_size, 1, 28, 28), Variable(y)
+                x, y = Variable(x).view(len(x), 1, 28, 28), Variable(y)
             else:
                 x, y = Variable(x).view(len(x), -1), Variable(y)
 
@@ -153,8 +197,8 @@ class MNIST():
     def train(self, nb_epochs, train_loader, valid_loader, test_loader):
         """Train model on data"""
 
-        model_names = ["Multilayer perceptron", "Convolutional neural network"]
-        print(model_names[self.model_type.value])
+        # Format header
+        format_header(self)
 
         # Initialize tracked quantities
         train_loss, train_acc, valid_acc, test_acc = [], [], [], []
@@ -172,7 +216,7 @@ class MNIST():
 
                 # Forward pass
                 if (self.model_type == Net.CNN):
-                    x, y = Variable(x).view(train_loader.batch_size, 1, 28, 28), Variable(y)
+                    x, y = Variable(x).view(len(x), 1, 28, 28), Variable(y)
                 else:
                     x, y = Variable(x).view(len(x), -1), Variable(y)
 
@@ -195,28 +239,15 @@ class MNIST():
             # Save losses and accuracies
             train_loss.append(losses.avg)
             train_acc.append(self.predict(train_loader))
-            if valid_loader:
-                valid_acc.append(self.predict(valid_loader))
-            else:
-                valid_acc.append(-1)
-            if test_loader:
-                test_acc.append(self.predict(test_loader))
-            else:
-                test_acc.append(-1)
-          
-            # Format printing depending on tracked quantities
-            if valid_loader and test_loader: 
-                print("Avg loss: {:.4f} -- Train acc: {:.4f} -- Val acc: {:.4f} -- Test acc: {:.4f}".format(train_loss[epoch], train_acc[epoch], valid_acc[epoch], test_acc[epoch]))
-        
-            if valid_loader and not test_loader:
-                print("Avg loss: {:.4f} -- Train acc: {:.4f} -- Val acc: {:.4f}".format(
-                    train_loss[epoch], train_acc[epoch], valid_acc[epoch]))
+            valid_acc.append(self.predict(valid_loader) if valid_loader else -1)
+            test_acc.append(self.predict(test_loader) if test_loader else -1)
 
-            if not valid_loader and not test_loader:
-                print("Avg loss: {:.4f} -- Train acc: {:.4f}  ".format( 
-                    train_loss[epoch], train_acc[epoch]))
-
-
+            # Print statistics
+            track = { "valid": valid_loader is not None, 
+                      "test": test_loader is not None }
+            show_learning_stats(track, train_loss[epoch], train_acc[epoch], 
+                valid_acc[epoch], test_acc[epoch])
+         
         # Print elapsed time
         end = datetime.datetime.now()
         elapsed = str(end - start)[:-7]
@@ -238,11 +269,14 @@ if __name__ == "__main__":
     batch_size = 64
     nb_epochs = 3
     model_type = Net.MLP
+    regularizers = { "l2": False, 
+                     "dropout": False }
+    batch_norm = False
     data_filename = "../data/mnist/mnist.pkl"
 
     # Load data
     train_loader, valid_loader, test_loader = get_data_loaders(data_filename, batch_size)
 
     # Build MLP and train
-    mlp = MNIST(learning_rate, lmbda, model_type)
-    mlp.train(nb_epochs, train_loader, valid_loader, test_loader)
+    mlp = MNIST(learning_rate, lmbda, model_type, regularizers, batch_norm)
+    mlp.train(nb_epochs, train_loader, valid_loader, None)
