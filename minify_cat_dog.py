@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Load Cats & Dogs Kaggle dataset
-Assumes train.zip has been unzipped in savedir
+Assumes train.zip has been downloaded to root directory
 
 @author: chinwei, joeylitalien
 """
