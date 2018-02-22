@@ -18,18 +18,83 @@ from torch.utils.data.sampler import SubsetRandomSampler
 import numpy as np
 import datetime
 import collections
+from enum import Enum
 from utils import *
 
 
-class MNIST():
-    """Multilayer perceptron for Problem 1"""
+class MLP(nn.Module):
+    """Multilayer perceptron"""
 
-    def __init__(self, layers, learning_rate, lmbda):
+    def __init__(self):
+        super(MLP, self).__init__()
+        self.model = nn.Sequential(collections.OrderedDict([
+            # Layer 1
+            ("fc_1", nn.Linear(784, 800)), 
+            ("relu_1", nn.ReLU()),
+
+            # Layer 2
+            ("fc_2", nn.Linear(800, 800)), 
+            ("relu_2", nn.ReLU()),
+
+            # Output layer
+            ("fc_3", nn.Linear(800, 10))
+        ]))
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class CNN(nn.Module):
+    """Convolutional neural network"""
+
+    def __init__(self):
+        super(CNN, self).__init__()
+        self.model = nn.Sequential(collections.OrderedDict([
+            # Layer 1
+            ("conv2d_1", nn.Conv2d(in_channels=1, out_channels=16, 
+                kernel_size=(3, 3), padding=1)),
+            ("dropout_1", nn.Dropout(p=0.5)),
+            ("relu_1", nn.ReLU()),
+            ("maxpool2d_1", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+            
+            # Layer 2
+            ("conv2d_2", nn.Conv2d(in_channels=16, out_channels=32, 
+                kernel_size=(3, 3), padding=1)),
+            ("dropout_2", nn.Dropout(p=0.5)),
+            ("relu_2", nn.ReLU()),
+            ("maxpool2d_2", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+            
+            # Layer 3
+            ("conv2d_3", nn.Conv2d(in_channels=32, out_channels=64, 
+                kernel_size=(3, 3), padding=1)),
+            ("dropout_3", nn.Dropout(p=0.5)),
+            ("relu_3", nn.ReLU()),
+            ("maxpool2d_3", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+            
+            # Layer 4
+            ("conv2d_4", nn.Conv2d(in_channels=64, out_channels=128, 
+                kernel_size=(3, 3), padding=1)),
+            ("dropout_4", nn.Dropout(p=0.5)),
+            ("relu_4", nn.ReLU()),
+            ("maxpool2d_4", nn.MaxPool2d(kernel_size=(2, 2), stride=2))
+        ]))
+        
+        # Output layer
+        self.clf = nn.Linear(128, 10) 
+
+    def forward(self, x):
+        return self.clf(self.model(x).squeeze())
+
+
+class MNIST():
+    """Deep model for Problem 1"""
+
+    def __init__(self, learning_rate, lmbda, model_type):
         """Initialize multilayer perceptron"""
 
-        self.layers = layers
         self.learning_rate = learning_rate
         self.lmbda = lmbda
+        self.model_type = model_type
         self.compile()
 
 
@@ -44,14 +109,8 @@ class MNIST():
     def compile(self):
         """Initialize model parameters"""
 
-        # MLP with 2 hidden layers
-        self.model = nn.Sequential(collections.OrderedDict([
-                        ("fc1", nn.Linear(self.layers[0], self.layers[1])), 
-                        ("relu1", nn.ReLU()),
-                        ("fc2", nn.Linear(self.layers[1], self.layers[2])), 
-                        ("relu2", nn.ReLU()),
-                        ("fc3", nn.Linear(self.layers[2], self.layers[3]))
-                     ]))
+        # Choose type of model
+        self.model = CNN() if self.model_type == Net.CNN else MLP()
 
         # Initialize weights
         self.model.apply(self.init_weights)
@@ -73,7 +132,11 @@ class MNIST():
         correct = 0.
         for batch_idx, (x, y) in enumerate(data_loader):
             # Forward pass
-            x, y = Variable(x).view(len(x), -1), Variable(y)
+            if (self.model_type == Net.CNN):
+                x, y = Variable(x).view(data_loader.batch_size, 1, 28, 28), Variable(y)
+            else:
+                x, y = Variable(x).view(len(x), -1), Variable(y)
+
             if torch.cuda.is_available(): 
                 x = x.cuda()
                 y = y.cuda()
@@ -90,6 +153,9 @@ class MNIST():
     def train(self, nb_epochs, train_loader, valid_loader, test_loader):
         """Train model on data"""
 
+        model_names = ["Multilayer perceptron", "Convolutional neural network"]
+        print(model_names[self.model_type.value])
+
         # Initialize tracked quantities
         train_loss, train_acc, valid_acc, test_acc = [], [], [], []
 
@@ -105,7 +171,11 @@ class MNIST():
                 progress_bar(batch_idx, len(train_loader.dataset) / train_loader.batch_size)
 
                 # Forward pass
-                x, y = Variable(x).view(len(x), -1), Variable(y)
+                if (self.model_type == Net.CNN):
+                    x, y = Variable(x).view(train_loader.batch_size, 1, 28, 28), Variable(y)
+                else:
+                    x, y = Variable(x).view(len(x), -1), Variable(y)
+
                 if torch.cuda.is_available():
                     x = x.cuda()
                     y = y.cuda()
@@ -157,17 +227,22 @@ class MNIST():
 
 if __name__ == "__main__":
 
+    # Enum to choose which model to train
+    class Net(Enum):
+        MLP = 0
+        CNN = 1
+
     # Model parameters
-    layers = [784, 800, 800, 10]
     learning_rate = 0.02
     lmbda = 2.5
     batch_size = 64
     nb_epochs = 3
+    model_type = Net.MLP
     data_filename = "../data/mnist/mnist.pkl"
 
     # Load data
     train_loader, valid_loader, test_loader = get_data_loaders(data_filename, batch_size)
 
     # Build MLP and train
-    mlp = MNIST(layers, learning_rate, lmbda)
+    mlp = MNIST(learning_rate, lmbda, model_type)
     mlp.train(nb_epochs, train_loader, valid_loader, test_loader)
