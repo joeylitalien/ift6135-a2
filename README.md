@@ -1,4 +1,3 @@
-CNNs, Regularization and Normalization
 # IFT6135 Representation Learning
 ## Assignment 2: CNNs, Regularization and Normalization
 
