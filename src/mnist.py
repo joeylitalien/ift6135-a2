@@ -28,23 +28,48 @@ from utils import *
 class MLP(nn.Module):
     """Multilayer perceptron"""
 
-    def __init__(self, weight_decay=0, dropout=0):
+    def __init__(self, n_dropout=0, avg_pre_softmax=True):
         super(MLP, self).__init__()
-        self.model = nn.Sequential(collections.OrderedDict([
-            # Layer 1
-            ("fc_1", nn.Linear(784, 800)), 
-            ("relu_1", nn.ReLU()),
+        self.n_dropout = n_dropout
+        self.avg_pre_softmax = avg_pre_softmax
 
-            # Layer 2
-            ("fc_2", nn.Linear(800, 800)), 
-            ("relu_2", nn.ReLU()),
+        # Layer 1
+        self.fc_1 = nn.Linear(784, 800)
+        self.relu_1 = nn.ReLU()      
 
-            # Output layer
-            ("fc_3", nn.Linear(800, 10))
-        ]))
+        # Layer 2
+        self.fc_2 = nn.Linear(800, 800)
+        self.relu_2 = nn.ReLU()
+
+        # Output layer
+        self.fc_3 = nn.Linear(800, 10)
+        self.dropout = nn.Dropout(p=0.5)
+        self.softmax = nn.Softmax(dim=0)
 
     def forward(self, x):
-        return self.model(x)
+        # Sample dropout for last layer
+        if self.n_dropout != 0:
+            out = self.fc_1(x)
+            out = self.relu_1(out)
+            out = self.fc_2(out)
+            masks = [self.dropout(out) for i in range(self.n_dropout)]
+            
+            # Part (b) ii. Average dropouts before applying softmax
+            if self.avg_pre_softmax:
+                out = sum(m for m in masks) / self.n_dropout
+
+            # Part (b) iii. Average predictions after applying softmax
+            else:
+                out = sum(self.softmax(m) for m in masks) / self.n_dropout
+                out = torch.log(out)
+
+        # No dropout
+        else:
+            out = self.fc_1(x)
+            out = self.relu_1(out)
+            out = self.fc_2(out)
+        
+        return out
 
 
 class CNN(nn.Module):
@@ -119,23 +144,24 @@ class CNN(nn.Module):
             ]))
 
         # Output layer
-        self.clf = nn.Linear(128, 10) 
+        self.dense = nn.Linear(128, 10) 
 
     def forward(self, x):
-        return self.clf(self.model(x).squeeze())
+        return self.dense(self.model(x).squeeze())
 
 
 class MNIST():
     """Deep model for Problem 1"""
 
-    def __init__(self, learning_rate, lmbda, model_type, weight_decay, dropout, batch_norm):
+    def __init__(self, learning_rate, model_type, weight_decay=0, 
+            n_dropout=0, avg_pre_softmax=True, batch_norm=False):
         """Initialize multilayer perceptron"""
 
         self.learning_rate = learning_rate
-        self.lmbda = lmbda
         self.model_type = model_type
         self.weight_decay = weight_decay
-        self.dropout = dropout
+        self.n_dropout = n_dropout
+        self.avg_pre_softmax = avg_pre_softmax 
         self.batch_norm = batch_norm
         self.compile()
 
@@ -155,13 +181,18 @@ class MNIST():
         if self.model_type == Net.CNN:
             self.model = CNN(self.batch_norm)
         else:
-            self.model = MLP(self.weight_decay, self.dropout)
+            self.model = MLP(self.n_dropout, self.avg_pre_softmax)
 
         # Initialize weights
         self.model.apply(self.init_weights)
 
         # Set loss function and gradient-descend optimizer
-        self.loss_fn = nn.CrossEntropyLoss()
+        if self.n_dropout == 0 or (self.n_dropout !=0 and self.avg_pre_softmax):
+            self.loss_fn = nn.CrossEntropyLoss() 
+        else:
+            self.loss_fn = nn.NLLLoss()
+
+        # L2 regularization
         if self.weight_decay != 0:
             self.optimizer = optim.SGD(self.model.parameters(), 
                             lr=self.learning_rate,
@@ -194,7 +225,8 @@ class MNIST():
             
             # Predict
             y_pred = self.model(x)
-            correct += float((y_pred.max(1)[1] == y).sum().data[0]) / data_loader.batch_size 
+            correct += float((y_pred.max(1)[1] == y).sum().data[0]) \
+                        / data_loader.batch_size 
 
         # Compute accuracy
         acc = correct / len(data_loader)
@@ -208,7 +240,7 @@ class MNIST():
         format_header(self)
 
         # Initialize tracked quantities
-        train_loss, train_acc, valid_acc, test_acc = [], [], [], []
+        train_loss, train_acc, valid_acc, test_acc, l2_norm = [], [], [], [], []
 
         # Train
         start = datetime.datetime.now()
@@ -219,7 +251,8 @@ class MNIST():
             # Mini-batch SGD
             for batch_idx, (x, y) in enumerate(train_loader):
                 # Print progress bar
-                progress_bar(batch_idx, len(train_loader.dataset) / train_loader.batch_size)
+                progress_bar(batch_idx, len(train_loader.dataset) / \
+                        train_loader.batch_size)
 
                 # Forward pass
                 if (self.model_type == Net.CNN):
@@ -238,6 +271,10 @@ class MNIST():
                 loss = self.loss_fn(y_pred, y)
                 losses.update(loss.data[0], x.size(0))
 
+                # Get L2 norm of all parameters
+                params = [l.view(1,-1) for l in mlp.model.parameters()]
+                l2_norm.append(torch.cat(params, dim=1).norm().data[0])
+        
                 # Zero gradients, perform a backward pass, and update the weights
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -250,17 +287,17 @@ class MNIST():
             test_acc.append(self.predict(test_loader) if test_loader else -1)
 
             # Print statistics
-            track = { "valid": valid_loader is not None, 
-                      "test": test_loader is not None }
+            track = dict(valid = valid_loader is not None, 
+                         test = test_loader is not None)
             show_learning_stats(track, train_loss[epoch], train_acc[epoch], 
-                valid_acc[epoch], test_acc[epoch])
+                    valid_acc[epoch], test_acc[epoch])
          
         # Print elapsed time
         end = datetime.datetime.now()
         elapsed = str(end - start)[:-7]
         print("Training done! Elapsed time: {}\n".format(elapsed))
 
-        return train_loss, train_acc, valid_acc, test_acc
+        return train_loss, train_acc, valid_acc, test_acc, l2_norm
 
 
 if __name__ == "__main__":
@@ -272,18 +309,24 @@ if __name__ == "__main__":
 
     # Model parameters
     learning_rate = 0.02
-    lmbda = 2.5
+    lmbda = 0
     batch_size = 64
     nb_epochs = 3
     model_type = Net.CNN
-    weight_decay = 2.5
-    dropout = 10
+    n_dropout = 0
+    avg_pre_softmax = True
     batch_norm = False
     data_filename = "../data/mnist/mnist.pkl"
 
     # Load data
     train_loader, valid_loader, test_loader = get_data_loaders(data_filename, batch_size)
 
+    # Adjust weight decay for SGD mini-batch
+    weight_decay = lmbda * batch_size / len(train_loader.dataset)
+
     # Build MLP and train
-    mlp = MNIST(learning_rate, lmbda, model_type, weight_decay, dropout, batch_norm)
-    mlp.train(nb_epochs, train_loader, valid_loader, test_loader)
+    mlp = MNIST(learning_rate, model_type, weight_decay, 
+            n_dropout, avg_pre_softmax,
+            batch_norm)
+    l2_norm, train_loss, train_acc, valid_acc, test_acc = \
+            mlp.train(nb_epochs, train_loader, valid_loader, test_loader)
