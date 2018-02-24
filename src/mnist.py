@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 IFT6135: Representation Learning
@@ -27,7 +28,7 @@ from utils import *
 class MLP(nn.Module):
     """Multilayer perceptron"""
 
-    def __init__(self, regularizers):
+    def __init__(self, weight_decay=0, dropout=0):
         super(MLP, self).__init__()
         self.model = nn.Sequential(collections.OrderedDict([
             # Layer 1
@@ -49,7 +50,7 @@ class MLP(nn.Module):
 class CNN(nn.Module):
     """Convolutional neural network"""
 
-    def __init__(self, batch_norm):
+    def __init__(self, batch_norm=False):
         super(CNN, self).__init__()
         if (batch_norm):
             self.model = nn.Sequential(collections.OrderedDict([
@@ -117,7 +118,6 @@ class CNN(nn.Module):
                 ("maxpool2d_4", nn.MaxPool2d(kernel_size=(2, 2), stride=2))
             ]))
 
-        
         # Output layer
         self.clf = nn.Linear(128, 10) 
 
@@ -128,13 +128,14 @@ class CNN(nn.Module):
 class MNIST():
     """Deep model for Problem 1"""
 
-    def __init__(self, learning_rate, lmbda, model_type, regularizers, batch_norm):
+    def __init__(self, learning_rate, lmbda, model_type, weight_decay, dropout, batch_norm):
         """Initialize multilayer perceptron"""
 
         self.learning_rate = learning_rate
         self.lmbda = lmbda
         self.model_type = model_type
-        self.regularizers = regularizers
+        self.weight_decay = weight_decay
+        self.dropout = dropout
         self.batch_norm = batch_norm
         self.compile()
 
@@ -154,14 +155,20 @@ class MNIST():
         if self.model_type == Net.CNN:
             self.model = CNN(self.batch_norm)
         else:
-            self.model = MLP(self.regularizers)
+            self.model = MLP(self.weight_decay, self.dropout)
 
         # Initialize weights
         self.model.apply(self.init_weights)
 
         # Set loss function and gradient-descend optimizer
         self.loss_fn = nn.CrossEntropyLoss()
-        self.optimizer = optim.SGD(self.model.parameters(), 
+        if self.weight_decay != 0:
+            self.optimizer = optim.SGD(self.model.parameters(), 
+                            lr=self.learning_rate,
+                            weight_decay=self.weight_decay)
+
+        else:
+            self.optimizer = optim.SGD(self.model.parameters(), 
                             lr=self.learning_rate)
 
         # CUDA support
@@ -268,9 +275,9 @@ if __name__ == "__main__":
     lmbda = 2.5
     batch_size = 64
     nb_epochs = 3
-    model_type = Net.MLP
-    regularizers = { "l2": False, 
-                     "dropout": False }
+    model_type = Net.CNN
+    weight_decay = 2.5
+    dropout = 10
     batch_norm = False
     data_filename = "../data/mnist/mnist.pkl"
 
@@ -278,5 +285,5 @@ if __name__ == "__main__":
     train_loader, valid_loader, test_loader = get_data_loaders(data_filename, batch_size)
 
     # Build MLP and train
-    mlp = MNIST(learning_rate, lmbda, model_type, regularizers, batch_norm)
-    mlp.train(nb_epochs, train_loader, valid_loader, None)
+    mlp = MNIST(learning_rate, lmbda, model_type, weight_decay, dropout, batch_norm)
+    mlp.train(nb_epochs, train_loader, valid_loader, test_loader)

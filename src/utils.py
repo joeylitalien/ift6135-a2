@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 IFT6135: Representation Learning
@@ -36,9 +37,9 @@ def format_header(m):
     models = ["Multilayer Perceptron", "Convolutional Neural Network"]
     regs_norms = ["L2 regularization", "Batch normalization"]
     hdr = models[m.model_type.value]
-    if m.regularizers["l2"]:
+    if m.weight_decay != 0:
         print("{} ({})".format(hdr, "L2 regularization"))
-    elif m.regularizers["dropout"]:
+    elif m.dropout != 0:
         print("{} ({})".format(hdr, "Drop out"))
     elif m.batch_norm:
         print("{} ({})".format(hdr, "Batch normalization"))
@@ -99,7 +100,10 @@ def get_data_loaders(data_filename, batch_size):
 
 
 class AverageMeter(object):
-    """Computes and stores the average and current value"""
+    """
+    Computes and stores the average and current value
+    Useful for keeping track of training loss
+    """
 
     def __init__(self):
         self.reset()
