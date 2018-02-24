@@ -211,6 +211,9 @@ class MNIST():
     def predict(self, data_loader):
         """Evaluate model on dataset"""
 
+        # Set model phase
+        self.model.train(False)
+
         correct = 0.
         for batch_idx, (x, y) in enumerate(data_loader):
             # Forward pass
@@ -236,8 +239,9 @@ class MNIST():
     def train(self, nb_epochs, train_loader, valid_loader, test_loader):
         """Train model on data"""
 
-        # Format header
+        # Format header and set phase
         format_header(self)
+        self.model.train(True)
 
         # Initialize tracked quantities
         train_loss, train_acc, valid_acc, test_acc, l2_norm = [], [], [], [], []
@@ -312,7 +316,7 @@ if __name__ == "__main__":
     lmbda = 0
     batch_size = 64
     nb_epochs = 3
-    model_type = Net.CNN
+    model_type = Net.MLP
     n_dropout = 0
     avg_pre_softmax = True
     batch_norm = False
