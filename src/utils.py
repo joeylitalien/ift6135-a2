@@ -5,7 +5,7 @@ IFT6135: Representation Learning
 Assignment 2: CNNs, Regularization and Normalization
 
 Authors: 
-    Samuel Laferriere <samlaf92@gmail.com>
+    Samuel Laferriere <samuel.laferriere.cyr@umontreal.ca>
     Joey Litalien <joey.litalien@mail.mcgill.ca>
 """
 
@@ -15,6 +15,8 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torchvision import transforms
+from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, TensorDataset
 import pickle
 
@@ -89,7 +91,7 @@ def unpickle_mnist(filename):
     return train_data, valid_data, test_data
 
 
-def get_data_loaders(data_filename, batch_size):
+def load_mnist(data_filename, batch_size):
     """Load data from pickled file"""
 
     train_data, valid_data, test_data = unpickle_mnist(data_filename)
@@ -99,6 +101,23 @@ def get_data_loaders(data_filename, batch_size):
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
 
     return train_loader, valid_loader, test_loader
+
+
+def load_catdog(train_dir, valid_dir, batch_size):
+    """Load data from image folders"""
+
+    train_data = ImageFolder(root=train_dir, 
+            transform=transforms.Compose([transforms.Resize((64, 64)),
+                                          transforms.ToTensor()]))
+
+    valid_data = ImageFolder(root=train_dir, 
+            transform=transforms.Compose([transforms.Resize((64, 64)),
+                                          transforms.ToTensor()]))
+
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    valid_loader = DataLoader(valid_data, batch_size=batch_size, shuffle=True)
+
+    return train_loader, train_loader
 
 
 class AverageMeter(object):

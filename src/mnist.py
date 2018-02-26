@@ -5,7 +5,7 @@ IFT6135: Representation Learning
 Assignment 2: CNNs, Regularization and Normalization (Problem 1)
 
 Authors: 
-    Samuel Laferriere <samlaf92@gmail.com>
+    Samuel Laferriere <samuel.laferriere.cyr@umontreal.ca>
     Joey Litalien <joey.litalien@mail.mcgill.ca>
 """
 
@@ -16,7 +16,6 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.data.sampler import SubsetRandomSampler
 
 import numpy as np
 import datetime
@@ -155,7 +154,7 @@ class MNIST():
 
     def __init__(self, learning_rate, model_type, weight_decay=0, 
             n_dropout=0, avg_pre_softmax=True, batch_norm=False):
-        """Initialize multilayer perceptron"""
+        """Initialize deep net"""
 
         self.learning_rate = learning_rate
         self.model_type = model_type
@@ -276,7 +275,7 @@ class MNIST():
                 losses.update(loss.data[0], x.size(0))
 
                 # Get L2 norm of all parameters
-                params = [l.view(1,-1) for l in mlp.model.parameters()]
+                params = [l.view(1,-1) for l in self.model.parameters()]
                 l2_norm.append(torch.cat(params, dim=1).norm().data[0])
         
                 # Zero gradients, perform a backward pass, and update the weights
@@ -316,21 +315,21 @@ if __name__ == "__main__":
     lmbda = 0
     batch_size = 64
     nb_epochs = 3
-    model_type = Net.MLP
+    model_type = Net.CNN
     n_dropout = 0
     avg_pre_softmax = True
-    batch_norm = False
+    batch_norm = True 
     data_filename = "../data/mnist/mnist.pkl"
 
     # Load data
-    train_loader, valid_loader, test_loader = get_data_loaders(data_filename, batch_size)
+    train_loader, valid_loader, test_loader = load_mnist(data_filename, batch_size)
 
     # Adjust weight decay for SGD mini-batch
     weight_decay = lmbda * batch_size / len(train_loader.dataset)
 
-    # Build MLP and train
-    mlp = MNIST(learning_rate, model_type, weight_decay, 
+    # Build deep net and train
+    net = MNIST(learning_rate, model_type, weight_decay, 
             n_dropout, avg_pre_softmax,
             batch_norm)
     l2_norm, train_loss, train_acc, valid_acc, test_acc = \
-            mlp.train(nb_epochs, train_loader, valid_loader, test_loader)
+            net.train(nb_epochs, train_loader, valid_loader, test_loader)
