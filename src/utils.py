@@ -12,6 +12,8 @@ Authors:
 from __future__ import print_function
 
 import sys
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -70,6 +72,18 @@ def show_learning_stats(track, train_loss, train_acc, valid_acc, test_acc):
         print("Train loss: {:.4f} -- Train acc: {:.4f}  ".format(
             train_loss, train_acc))
 
+
+def plot_per_epoch(d, d_label, title):
+    """Plot graph; only takes a single list"""
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.scatter(range(1,len(d)+1), d, c="b", s=6, marker="o", label=d_label)
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel(d_label)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.set_title(title)
+    plt.show()
 
 def unpickle_mnist(filename):
     """Load data into training/valid/test sets"""
