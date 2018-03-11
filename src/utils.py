@@ -4,7 +4,7 @@
 IFT6135: Representation Learning
 Assignment 2: CNNs, Regularization and Normalization
 
-Authors: 
+Authors:
     Samuel Laferriere <samuel.laferriere.cyr@umontreal.ca>
     Joey Litalien <joey.litalien@mail.mcgill.ca>
 """
@@ -56,7 +56,7 @@ def format_header(m):
 def show_learning_stats(track, train_loss, train_acc, valid_acc, test_acc):
     """Format printing depending on tracked quantities"""
 
-    if track["valid"] and track["test"]: 
+    if track["valid"] and track["test"]:
         print("Train loss: {:.4f} -- Train acc: {:.4f} -- Val acc: {:.4f} -- Test acc: {:.4f}".format(
             train_loss, train_acc, valid_acc, test_acc))
 
@@ -101,7 +101,7 @@ def unpickle_mnist(filename):
     train_data = TensorDataset(X_train, y_train)
     valid_data = TensorDataset(X_valid, y_valid)
     test_data = TensorDataset(X_test, y_test)
-    
+
     return train_data, valid_data, test_data
 
 
@@ -117,21 +117,26 @@ def load_mnist(data_filename, batch_size):
     return train_loader, valid_loader, test_loader
 
 
-def load_catdog(train_dir, valid_dir, batch_size):
+def load_catdog(train_dir, valid_dir, test_dir, batch_size):
     """Load data from image folders"""
 
-    train_data = ImageFolder(root=train_dir, 
+    train_data = ImageFolder(root=train_dir,
             transform=transforms.Compose([transforms.Resize((64, 64)),
                                           transforms.ToTensor()]))
 
-    valid_data = ImageFolder(root=train_dir, 
+    valid_data = ImageFolder(root=valid_dir,
+            transform=transforms.Compose([transforms.Resize((64, 64)),
+                                          transforms.ToTensor()]))
+
+    test_data = ImageFolder(root=test_dir,
             transform=transforms.Compose([transforms.Resize((64, 64)),
                                           transforms.ToTensor()]))
 
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(valid_data, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
 
-    return train_loader, train_loader
+    return train_loader, valid_loader, test_loader
 
 
 class AverageMeter(object):
