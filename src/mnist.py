@@ -18,6 +18,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 import numpy as np
+import pickle
 import datetime
 import collections
 from enum import Enum
@@ -27,9 +28,10 @@ from utils import *
 class MLP(nn.Module):
     """Multilayer perceptron"""
 
-    def __init__(self, n_dropout=0, avg_pre_softmax=True):
+    def __init__(self, dropout_masks=[], avg_pre_softmax=True):
         super(MLP, self).__init__()
-        self.n_dropout = n_dropout
+        self.dropout_masks = dropout_masks
+        self.n_dropouts = 0
         self.avg_pre_softmax = avg_pre_softmax
 
         # Layer 1
@@ -47,20 +49,23 @@ class MLP(nn.Module):
 
     def forward(self, x):
         # Sample dropout for last layer
-        if self.n_dropout != 0:
+        if self.dropout_masks:
             out = self.fc_1(x)
             out = self.relu_1(out)
             out = self.fc_2(out)
-            masks = [self.dropout(out) for i in range(self.n_dropout)]
-            
-            # Part (b) ii. Average dropouts before applying softmax
-            if self.avg_pre_softmax:
-                out = sum(m for m in masks) / self.n_dropout
 
-            # Part (b) iii. Average predictions after applying softmax
-            else:
-                out = sum(self.softmax(m) for m in masks) / self.n_dropout
-                out = torch.log(out)
+            # Only do dropout in evaluation mode
+            if self.training == False:
+                masks = [self.dropout(out) for i in range(self.n_dropouts)]
+            
+                # Part (b) ii. Average dropouts before applying softmax
+                if self.avg_pre_softmax:
+                    out = sum(m for m in masks) / self.n_dropouts
+
+                # Part (b) iii. Average predictions after applying softmax
+                else:
+                    out = sum(self.softmax(m) for m in masks) / self.n_dropouts
+                    out = torch.log(out)
 
         # No dropout
         else:
@@ -153,13 +158,13 @@ class MNIST():
     """Deep model for Problem 1"""
 
     def __init__(self, learning_rate, model_type, weight_decay=0, 
-            n_dropout=0, avg_pre_softmax=True, batch_norm=False):
+            dropout_masks=[], avg_pre_softmax=True, batch_norm=False):
         """Initialize deep net"""
 
         self.learning_rate = learning_rate
         self.model_type = model_type
         self.weight_decay = weight_decay
-        self.n_dropout = n_dropout
+        self.dropout_masks = dropout_masks
         self.avg_pre_softmax = avg_pre_softmax 
         self.batch_norm = batch_norm
         self.compile()
@@ -180,13 +185,13 @@ class MNIST():
         if self.model_type == Net.CNN:
             self.model = CNN(self.batch_norm)
         else:
-            self.model = MLP(self.n_dropout, self.avg_pre_softmax)
+            self.model = MLP(self.dropout_masks, self.avg_pre_softmax)
 
         # Initialize weights
         self.model.apply(self.init_weights)
 
         # Set loss function and gradient-descend optimizer
-        if self.n_dropout == 0 or (self.n_dropout !=0 and self.avg_pre_softmax):
+        if not self.dropout_masks or (self.dropout_masks and self.avg_pre_softmax):
             self.loss_fn = nn.CrossEntropyLoss() 
         else:
             self.loss_fn = nn.NLLLoss()
@@ -207,19 +212,44 @@ class MNIST():
             self.loss_fn = self.loss_fn.cuda()
 
 
-    def predict(self, data_loader):
+    def predict_dropouts(self, data_loader):
         """Evaluate model on dataset"""
 
         # Set model phase
         self.model.train(False)
 
-        correct = 0.
+        correct = np.zeros(len(self.dropout_masks))
         for batch_idx, (x, y) in enumerate(data_loader):
             # Forward pass
             if (self.model_type == Net.CNN):
                 x, y = Variable(x).view(len(x), 1, 28, 28), Variable(y)
             else:
                 x, y = Variable(x).view(len(x), -1), Variable(y)
+
+            if torch.cuda.is_available(): 
+                x = x.cuda()
+                y = y.cuda()
+            
+            # Predict
+            for j, n_masks in enumerate(self.dropout_masks):
+                self.model.n_dropouts = n_masks
+                y_pred = self.model(x)
+                c = float((y_pred.max(1)[1] == y).sum().data[0]) / data_loader.batch_size
+                correct[j] += c
+
+        # Compute accuracy for each number of masks
+        acc = [c / len(data_loader) for c in correct]
+        return acc 
+
+    
+    def predict(self, data_loader):
+
+        # Set model phase
+        self.model.train(False)
+
+        correct = 0.
+        for batch_idx, (x, y) in enumerate(data_loader):
+            x, y = Variable(x).view(len(x), -1), Variable(y)
 
             if torch.cuda.is_available(): 
                 x = x.cuda()
@@ -240,7 +270,6 @@ class MNIST():
 
         # Format header and set phase
         format_header(self)
-        self.model.train(True)
 
         # Initialize tracked quantities
         train_loss, train_acc, valid_acc, test_acc, l2_norm = [], [], [], [], []
@@ -248,6 +277,8 @@ class MNIST():
         # Train
         start = datetime.datetime.now()
         for epoch in range(nb_epochs):
+            self.model.train(True)
+            
             print("Epoch {:d} | {:d}".format(epoch + 1, nb_epochs))
             losses = AverageMeter()
 
@@ -275,8 +306,8 @@ class MNIST():
                 losses.update(loss.data[0], x.size(0))
 
                 # Get L2 norm of all parameters
-                params = [l.view(1,-1) for l in self.model.parameters()]
-                l2_norm.append(torch.cat(params, dim=1).norm().data[0])
+                # params = [l.view(1,-1) for l in self.model.parameters()]
+                # l2_norm.append(torch.cat(params, dim=1).norm().data[0])
         
                 # Zero gradients, perform a backward pass, and update the weights
                 self.optimizer.zero_grad()
@@ -285,22 +316,25 @@ class MNIST():
 
             # Save losses and accuracies
             train_loss.append(losses.avg)
-            train_acc.append(self.predict(train_loader))
-            valid_acc.append(self.predict(valid_loader) if valid_loader else -1)
-            test_acc.append(self.predict(test_loader) if test_loader else -1)
+            train_acc.append(self.predict_dropouts(train_loader))
+            valid_acc.append(self.predict_dropouts(valid_loader) if valid_loader else -1)
+            if self.model.dropout_masks:
+                test_acc.append(self.predict_dropouts(test_loader) if test_loader else -1)
+            else:
+                test_acc.append(self.predict(test_loader) if test_loader else -1)
 
             # Print statistics
-            track = dict(valid = valid_loader is not None, 
-                         test = test_loader is not None)
-            show_learning_stats(track, train_loss[epoch], train_acc[epoch], 
-                    valid_acc[epoch], test_acc[epoch])
+            #track = dict(valid = valid_loader is not None, 
+            #             test = test_loader is not None)
+            #show_learning_stats(track, train_loss[epoch], train_acc[epoch], 
+            #        valid_acc[epoch], test_acc[epoch])
          
         # Print elapsed time
         end = datetime.datetime.now()
         elapsed = str(end - start)[:-7]
         print("Training done! Elapsed time: {}\n".format(elapsed))
 
-        return train_loss, train_acc, valid_acc, test_acc, l2_norm
+        return l2_norm, train_loss, train_acc, valid_acc, test_acc
 
 
 if __name__ == "__main__":
@@ -315,8 +349,8 @@ if __name__ == "__main__":
     lmbda = 0
     batch_size = 64
     nb_epochs = 3
-    model_type = Net.CNN
-    n_dropout = 0
+    model_type = Net.MLP
+    dropout_masks = range(10,110,10)
     avg_pre_softmax = True
     batch_norm = True 
     data_filename = "../data/mnist/mnist.pkl"
@@ -327,9 +361,22 @@ if __name__ == "__main__":
     # Adjust weight decay for SGD mini-batch
     weight_decay = lmbda * batch_size / len(train_loader.dataset)
 
+    net = MNIST(learning_rate, model_type, weight_decay, dropout_masks, avg_pre_softmax, batch_norm)
+    _, _, train_acc, _, test_acc = net.train(nb_epochs, train_loader, valid_loader, test_loader)
+
+    data = dict(train_acc=train_acc, test_acc=test_acc)
+
     # Build deep net and train
+    """
     net = MNIST(learning_rate, model_type, weight_decay, 
-            n_dropout, avg_pre_softmax,
-            batch_norm)
+        n_dropout, avg_pre_softmax,
+        batch_norm)
     l2_norm, train_loss, train_acc, valid_acc, test_acc = \
-            net.train(nb_epochs, train_loader, valid_loader, test_loader)
+        net.train(nb_epochs, train_loader, valid_loader, None)
+
+    # Save data to file
+    data = dict(l2_norm=l2_norm, train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc)
+    """
+
+    with open('1b_pre_softmax_dropout_v2.pkl', 'wb') as fp:
+        pickle.dump(data, fp)

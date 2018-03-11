@@ -30,8 +30,8 @@ if __name__ == '__main__':
     if not os.path.exists(args.savedir):
         os.makedirs(args.savedir)
 
-    train_data = os.path.join(args.savedir, 'train')
-    train_proc_data = os.path.join(args.savedir, 'train_64x64')
+    train_data = os.path.join(args.savedir, 'full')
+    train_proc_data = os.path.join(args.savedir, 'full_64x64')
     if not os.path.exists(train_proc_data):
         os.makedirs(train_proc_data)
 

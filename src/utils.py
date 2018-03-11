@@ -41,10 +41,10 @@ def format_header(m):
     hdr = models[m.model_type.value]
     if m.weight_decay != 0:
         print("{} ({})".format(hdr, "L2 regularization"))
-    elif m.n_dropout != 0 and m.avg_pre_softmax:
-        print("{} (Dropout N={:d} / Pre-softmax avg)".format(hdr, m.n_dropout))
-    elif m.n_dropout != 0 and not m.avg_pre_softmax:
-        print("{} (Dropout N={:d} / Post-softmax avg)".format(hdr, m.n_dropout))
+    elif m.dropout_masks and m.avg_pre_softmax:
+        print("{} (Dropouts / Pre-softmax avg)".format(hdr))
+    elif m.dropout_masks and not m.avg_pre_softmax:
+        print("{} (Dropouts / Post-softmax avg)".format(hdr))
     elif m.batch_norm:
         print("{} ({})".format(hdr, "Batch normalization"))
     else:
