@@ -121,15 +121,15 @@ def load_catdog(train_dir, valid_dir, test_dir, batch_size):
     """Load data from image folders"""
 
     train_data = ImageFolder(root=train_dir,
-            transform=transforms.Compose([transforms.Scale((64, 64)),
+            transform=transforms.Compose([transforms.Resize((64, 64)),
                                           transforms.ToTensor()]))
 
     valid_data = ImageFolder(root=valid_dir,
-            transform=transforms.Compose([transforms.Scale((64, 64)),
+            transform=transforms.Compose([transforms.Resize((64, 64)),
                                           transforms.ToTensor()]))
 
     test_data = ImageFolder(root=test_dir,
-            transform=transforms.Compose([transforms.Scale((64, 64)),
+            transform=transforms.Compose([transforms.Resize((64, 64)),
                                           transforms.ToTensor()]))
 
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)

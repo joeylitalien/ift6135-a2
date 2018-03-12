@@ -42,10 +42,10 @@ class ConvNet(nn.Module):
             nn.Linear(2048, 2048),
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.5),
-            nn.Linear(2048, 1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5),
-            nn.Linear(1024, 2),
+            #nn.Linear(2048, 2048),
+            #nn.ReLU(inplace=True),
+            #nn.Dropout(p=0.5),
+            nn.Linear(2048, 2)
         )
         self.init_weights()
 
@@ -102,7 +102,7 @@ class CatDog():
         """Initialize deep net"""
 
         self.learning_rate = learning_rate
-        self.momentum = momentum 
+        self.momentum = momentum
         self.batch_norm = batch_norm
         self.weight_norm = weight_norm
         self.weight_decay = weight_decay
@@ -115,7 +115,7 @@ class CatDog():
         self.model = ConvNet()
 
         # Set loss function and gradient-descend optimizer
-        self.loss_fn = nn.BCELoss()
+        self.loss_fn = nn.CrossEntropyLoss()
         self.optimizer = optim.SGD(self.model.parameters(),
                             lr=self.learning_rate,
                             weight_decay=self.weight_decay)
@@ -135,7 +135,6 @@ class CatDog():
         correct = 0.
         for batch_idx, (x, y) in enumerate(data_loader):
             # Forward pass
-            # x, y = Variable(x).view(len(x), 3, 64, 64), Variable(y)
             x, y = Variable(x), Variable(y)
 
             if torch.cuda.is_available():
@@ -144,8 +143,7 @@ class CatDog():
 
             # Predict
             y_pred = self.model(x)
-            correct += float((y_pred.max(1)[1] == y.float()).sum().data[0]) \
-                        / data_loader.batch_size
+            correct += float((y_pred.max(1)[1] == y).sum().data[0]) / data_loader.batch_size
 
         # Compute accuracy
         acc = correct / len(data_loader)
@@ -184,7 +182,7 @@ class CatDog():
                 y_pred = self.model(x)
 
                 # Compute loss
-                loss = self.loss_fn(y_pred, y.float())
+                loss = self.loss_fn(y_pred, y)
                 losses.update(loss.data[0], x.size(0))
 
                 # Zero gradients, perform a backward pass, and update the weights
@@ -217,7 +215,7 @@ if __name__ == "__main__":
     # Model parameters
     nb_epochs = 10
     batch_size = 64
-    learning_rate = 0.02
+    learning_rate = 0.0001
     momentum = 0.9
     batch_norm = False
     weight_norm = False
