@@ -23,6 +23,57 @@ import collections
 from enum import Enum
 from utils import *
 import math
+import matplotlib.pyplot as plt
+
+
+class CNN(nn.Module):
+    """Convolutional neural network"""
+
+    def __init__(self, batch_norm=False):
+        super(CNN, self).__init__()
+        self.model = nn.Sequential(collections.OrderedDict([
+            # Layer 1
+            ("conv2d_1", nn.Conv2d(in_channels=3, out_channels=16,
+                kernel_size=(3, 3), padding=1)),
+            ("batchnorm2d_1", nn.BatchNorm2d(16)),
+            ("dropout_1", nn.Dropout(p=0.5)),
+            ("relu_1", nn.ReLU()),
+            ("maxpool2d_1", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+
+            # Layer 2
+            ("conv2d_2", nn.Conv2d(in_channels=16, out_channels=32,
+                kernel_size=(3, 3), padding=1)),
+            ("batchnorm2d_2", nn.BatchNorm2d(32)),
+            ("dropout_2", nn.Dropout(p=0.5)),
+            ("relu_2", nn.ReLU()),
+            ("maxpool2d_2", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+
+            # Layer 3
+            ("conv2d_3", nn.Conv2d(in_channels=32, out_channels=64,
+                kernel_size=(3, 3), padding=1)),
+            ("batchnorm2d_3", nn.BatchNorm2d(64)),
+            ("dropout_3", nn.Dropout(p=0.5)),
+            ("relu_3", nn.ReLU()),
+            ("maxpool2d_3", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
+
+            # Layer 4
+            ("conv2d_4", nn.Conv2d(in_channels=64, out_channels=128,
+                kernel_size=(3, 3), padding=1)),
+            ("batchnorm2d_4", nn.BatchNorm2d(128)),
+            ("dropout_4", nn.Dropout(p=0.5)),
+            ("relu_4", nn.ReLU()),
+            ("maxpool2d_4", nn.MaxPool2d(kernel_size=(2, 2), stride=2))
+        ]))
+
+        # Output layer
+        self.dense = nn.Sequential(
+            nn.Linear(2048, 512),
+            nn.ReLU(),
+            nn.Linear(512, 2)
+        )
+
+    def forward(self, x):
+        return self.dense(self.model(x).view(len(x), -1))
 
 
 class ConvNet(nn.Module):
@@ -36,22 +87,19 @@ class ConvNet(nn.Module):
                      512, 512, 512, 'M',
                      512, 512, 512, 'M']
         self.batch_norm = False
-        self.weight_norm = False
         self.features = self.build_layers()
         self.clf = nn.Sequential(
             nn.Linear(2048, 2048),
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.5),
-            #nn.Linear(2048, 2048),
-            #nn.ReLU(inplace=True),
-            #nn.Dropout(p=0.5),
+            nn.Linear(2048, 2048),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.5),
             nn.Linear(2048, 2)
         )
         self.init_weights()
 
     def forward(self, x):
-        """Predict"""
-
         x = self.features(x)
         x = x.view(x.size(0), -1)
         x = self.clf(x)
@@ -73,7 +121,7 @@ class ConvNet(nn.Module):
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
 
-    def build_layers(self, batch_norm=False, weight_norm=False):
+    def build_layers(self):
         """Construct deep net (VGG 16)"""
 
         layers = []
@@ -85,12 +133,9 @@ class ConvNet(nn.Module):
                 conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
                 if self.batch_norm:
                     layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
-                #elif self.weight_norm:
-                #    layers += [conv2d, nn.WeightNorm(v), nn.ReLU(inplace=True)]
                 else:
                     layers += [conv2d, nn.ReLU(inplace=True)]
                 in_channels = v
-
         return nn.Sequential(*layers)
 
 
@@ -108,11 +153,23 @@ class CatDog():
         self.weight_decay = weight_decay
         self.compile()
 
+    def init_weights(self, tensor):
+        """Glorot normal weight initialization"""
+
+        if isinstance(tensor, nn.Linear):
+            tensor.bias.data.fill_(0)
+            nn.init.xavier_normal(tensor.weight.data)
+
     def compile(self):
         """Initialize model parameters"""
 
         # Initialize model
         self.model = ConvNet()
+        #self.model = CNN()
+        #print(self.model)
+
+        # Initialize weights
+        # self.model.apply(self.init_weights)
 
         # Set loss function and gradient-descend optimizer
         self.loss_fn = nn.CrossEntropyLoss()
@@ -141,7 +198,7 @@ class CatDog():
                 x = x.cuda()
                 y = y.cuda()
 
-            # Predict
+            # Predicts
             y_pred = self.model(x)
             correct += float((y_pred.max(1)[1] == y).sum().data[0]) / data_loader.batch_size
 
@@ -170,6 +227,9 @@ class CatDog():
                 # Print progress bar
                 progress_bar(batch_idx, len(train_loader.dataset) / \
                         train_loader.batch_size)
+
+                #img = x[0].permute(1,2,0).numpy()
+                #plt.imsave('kek.png', img)
 
                 # Forward pass
                 x, y = Variable(x), Variable(y)
@@ -221,8 +281,8 @@ if __name__ == "__main__":
     weight_norm = False
     weight_decay = 0
     train_dir = "../data/catdog/train"
-    valid_dir = "../data/catdog/valid"
-    test_dir = "../data/catdog/test"
+    valid_dir = "../data/catdog/valid_sm"
+    test_dir = "../data/catdog/test_sm"
 
     # Load data
     train_loader, valid_loader, test_loader = load_catdog(train_dir, valid_dir, test_dir, batch_size)
