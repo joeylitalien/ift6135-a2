@@ -16,6 +16,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torch.nn.utils import weight_norm
 
 import numpy as np
 import datetime
@@ -26,78 +27,51 @@ import math
 import matplotlib.pyplot as plt
 
 
-class CNN(nn.Module):
-    """Convolutional neural network"""
-
-    def __init__(self, batch_norm=False):
-        super(CNN, self).__init__()
-        self.model = nn.Sequential(collections.OrderedDict([
-            # Layer 1
-            ("conv2d_1", nn.Conv2d(in_channels=3, out_channels=16,
-                kernel_size=(3, 3), padding=1)),
-            ("batchnorm2d_1", nn.BatchNorm2d(16)),
-            ("dropout_1", nn.Dropout(p=0.5)),
-            ("relu_1", nn.ReLU()),
-            ("maxpool2d_1", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
-
-            # Layer 2
-            ("conv2d_2", nn.Conv2d(in_channels=16, out_channels=32,
-                kernel_size=(3, 3), padding=1)),
-            ("batchnorm2d_2", nn.BatchNorm2d(32)),
-            ("dropout_2", nn.Dropout(p=0.5)),
-            ("relu_2", nn.ReLU()),
-            ("maxpool2d_2", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
-
-            # Layer 3
-            ("conv2d_3", nn.Conv2d(in_channels=32, out_channels=64,
-                kernel_size=(3, 3), padding=1)),
-            ("batchnorm2d_3", nn.BatchNorm2d(64)),
-            ("dropout_3", nn.Dropout(p=0.5)),
-            ("relu_3", nn.ReLU()),
-            ("maxpool2d_3", nn.MaxPool2d(kernel_size=(2, 2), stride=2)),
-
-            # Layer 4
-            ("conv2d_4", nn.Conv2d(in_channels=64, out_channels=128,
-                kernel_size=(3, 3), padding=1)),
-            ("batchnorm2d_4", nn.BatchNorm2d(128)),
-            ("dropout_4", nn.Dropout(p=0.5)),
-            ("relu_4", nn.ReLU()),
-            ("maxpool2d_4", nn.MaxPool2d(kernel_size=(2, 2), stride=2))
-        ]))
-
-        # Output layer
-        self.dense = nn.Sequential(
-            nn.Linear(2048, 512),
-            nn.ReLU(),
-            nn.Linear(512, 2)
-        )
-
-    def forward(self, x):
-        return self.dense(self.model(x).view(len(x), -1))
-
-
 class ConvNet(nn.Module):
     """Convolutional neural network"""
 
-    def __init__(self, batch_norm):
+    def __init__(self, params):
         super(ConvNet, self).__init__()
+	
+	# Model architecture
         self.arch = [32, 32, 'M',
                      64, 64, 'M',
-                     128, 128, 'M',
-                     256, 256, 'M',
-                     512, 512, 'M']
-        self.batch_norm = batch_norm
+                     128, 128, 128, 'M',
+                     256, 256, 256, 'M',
+		     256, 256, 256, 'M']
+	self.dropout = params["dropout"]
+        self.batch_norm = params["batch_norm"]
+	self.weight_norm = params["weight_norm"]
         self.features = self.build_layers()
-        self.clf = nn.Sequential(
-            nn.Linear(2048, 1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5),
-            nn.Linear(1024, 512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5),
-            nn.Linear(512, 2)
-        )
+
+	# Dropout
+	if self.dropout:
+	    self.clf = nn.Sequential(
+		nn.Linear(1024, 512),
+		nn.ReLU(inplace=True),
+		nn.Dropout(p=0.5),
+		nn.Linear(512, 128),
+		nn.ReLU(inplace=True),
+		nn.Dropout(p=0.5),
+		nn.Linear(128, 2)
+	    )
+	else:
+	    self.clf = nn.Sequential(
+		nn.Linear(1024, 512),
+		nn.ReLU(inplace=True),
+		nn.Linear(512, 128),
+		nn.ReLU(inplace=True),
+		nn.Linear(128, 2)
+	    )
+
+	# He initialization
         self.init_weights()
+
+	# Weight normalization
+	if self.weight_norm:
+	    for m in self.modules():
+                if isinstance(m, nn.Linear):
+		    m.apply(nn.utils.weight_norm)	
 
     def forward(self, x):
         x = self.features(x)
@@ -111,8 +85,6 @@ class ConvNet(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal(m.weight.data)
-                #n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                #m.weight.data.normal_(0, math.sqrt(2. / n))
                 if m.bias is not None:
                     m.bias.data.zero_()
             elif isinstance(m, nn.BatchNorm2d):
@@ -120,7 +92,6 @@ class ConvNet(nn.Module):
                 m.bias.data.zero_()
             elif isinstance(m, nn.Linear):
                 nn.init.kaiming_normal(m.weight.data)
-                #m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
 
     def build_layers(self):
@@ -135,6 +106,8 @@ class ConvNet(nn.Module):
                 conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
                 if self.batch_norm:
                     layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
+                elif self.weight_norm:
+                    layers += [nn.utils.weight_norm(conv2d), nn.ReLU(inplace=True)]
                 else:
                     layers += [conv2d, nn.ReLU(inplace=True)]
                 in_channels = v
@@ -144,39 +117,34 @@ class ConvNet(nn.Module):
 class CatDog():
     """Deep model for Problem 2"""
 
-    def __init__(self, learning_rate, momentum, batch_norm,
-                    weight_norm, weight_decay):
+    def __init__(self, params):
         """Initialize deep net"""
 
-        self.learning_rate = learning_rate
-        self.momentum = momentum
-        self.batch_norm = batch_norm
-        self.weight_norm = weight_norm
-        self.weight_decay = weight_decay
+        self.batch_size = params["batch_size"]
+	self.train_len = params["train_len"]
+        self.learning_rate = params["learning_rate"]
+        self.momentum = params["momentum"]
+	self.dropout = params["dropout"]
+        self.batch_norm = params["batch_norm"]
+        self.weight_norm = params["weight_norm"]
+        self.weight_decay = params["weight_decay"]
         self.compile()
-
-    def init_weights(self, tensor):
-        """Glorot normal weight initialization"""
-
-        if isinstance(tensor, nn.Linear):
-            tensor.bias.data.fill_(0)
-            nn.init.kaiming_normal(tensor.weight.data)
 
     def compile(self):
         """Initialize model parameters"""
 
         # Initialize model
-        self.model = ConvNet(self.batch_norm)
-        #self.model = CNN()
-        #print(self.model)
-
-        # Initialize weights
-        #self.model.apply(self.init_weights)
+	params = dict(dropout=self.dropout,
+		      batch_norm=self.batch_norm, 
+		      weight_norm=self.weight_norm)
+        self.model = ConvNet(params)
 
         # Set loss function and gradient-descend optimizer
         self.loss_fn = nn.CrossEntropyLoss()
+	rescaled_lambda = self.weight_decay * self.batch_size / self.train_len
         self.optimizer = optim.Adam(self.model.parameters(),
-                            lr=self.learning_rate)
+                            lr=self.learning_rate,
+			    weight_decay=rescaled_lambda)
 
         # CUDA support
         if torch.cuda.is_available():
@@ -229,9 +197,6 @@ class CatDog():
                 progress_bar(batch_idx, len(train_loader.dataset) / \
                         train_loader.batch_size)
 
-                #img = x[0].permute(1,2,0).numpy()
-                #plt.imsave('kek.png', img)
-
                 # Forward pass
                 x, y = Variable(x), Variable(y)
 
@@ -249,39 +214,7 @@ class CatDog():
                 # Zero gradients, perform a backward pass, and update the weights
                 self.optimizer.zero_grad()
                 loss.backward()
-
-                """
-                for m in self.model.modules():
-                    if isinstance(m, nn.Conv2d):
-                        pass
-                    elif isinstance(m, nn.BatchNorm2d):
-                        pass
-                    elif isinstance(m, nn.Linear):
-                        print(m.weight.grad)
-                        print(m.weight)
-
-
-                print(list(self.model.parameters())[-2])
-                a = list(self.model.parameters())[-2].clone()
                 self.optimizer.step()
-                b = list(self.model.parameters())[-2].clone()
-                print(torch.equal(a.data,b.data))
-
-
-                for m in self.model.modules():
-                    if isinstance(m, nn.Conv2d):
-                        pass
-                    elif isinstance(m, nn.BatchNorm2d):
-                        pass
-                    elif isinstance(m, nn.Linear):
-                        print(m.weight.grad)
-                        print(m.weight)
-                        print()
-                """
-
-                self.optimizer.step()
-
-
 
             # Save losses and accuracies
             train_loss.append(losses.avg)
@@ -306,21 +239,29 @@ class CatDog():
 if __name__ == "__main__":
 
     # Model parameters
-    nb_epochs = 30
-    batch_size = 64
-    learning_rate = 0.001
-    momentum = 0.9
-    batch_norm = True
-    weight_norm = False
-    weight_decay = 0
-    train_dir = "../data/catdog/train"
-    valid_dir = "../data/catdog/valid"
-    test_dir = "../data/catdog/test_sm"
+    params = dict(
+    	nb_epochs = 50,
+    	batch_size = 128,
+	train_len = 15000,
+    	learning_rate = 0.003,
+    	momentum = 0.9,
+	dropout = False,
+    	batch_norm = True,
+    	weight_norm = False,
+    	weight_decay = 0
+    )
+
+    # Image folders
+    dirs = dict(
+    	train = "../data/catdog/train",
+    	valid = "../data/catdog/valid",
+    	test = "../data/catdog/test"
+    )
 
     # Load data
-    train_loader, valid_loader, test_loader = load_catdog(train_dir, valid_dir, test_dir, batch_size)
+    train_loader, valid_loader, test_loader = load_catdog(dirs, params["batch_size"])
 
     # Build deep net and train
-    net = CatDog(learning_rate, momentum, batch_norm, weight_norm, weight_decay)
+    net = CatDog(params)
     train_loss, train_acc, valid_acc, test_acc = \
-            net.train(nb_epochs, train_loader, valid_loader, test_loader)
+            net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)

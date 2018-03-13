@@ -117,20 +117,20 @@ def load_mnist(data_filename, batch_size):
     return train_loader, valid_loader, test_loader
 
 
-def load_catdog(train_dir, valid_dir, test_dir, batch_size):
+def load_catdog(dirs, batch_size):
     """Load data from image folders"""
 
-    train_data = ImageFolder(root=train_dir,
+    train_data = ImageFolder(root=dirs["train"],
             transform=transforms.Compose([transforms.Resize((64, 64)),
                                           transforms.RandomRotation(10),
                                           transforms.RandomHorizontalFlip(),
                                           transforms.ToTensor()]))
 
-    valid_data = ImageFolder(root=valid_dir,
+    valid_data = ImageFolder(root=dirs["valid"],
             transform=transforms.Compose([transforms.Resize((64, 64)),
                                           transforms.ToTensor()]))
 
-    test_data = ImageFolder(root=test_dir,
+    test_data = ImageFolder(root=dirs["test"],
             transform=transforms.Compose([transforms.Resize((64, 64)),
                                           transforms.ToTensor()]))
 
