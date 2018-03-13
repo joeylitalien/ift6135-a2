@@ -122,6 +122,8 @@ def load_catdog(train_dir, valid_dir, test_dir, batch_size):
 
     train_data = ImageFolder(root=train_dir,
             transform=transforms.Compose([transforms.Resize((64, 64)),
+                                          transforms.RandomRotation(10),
+                                          transforms.RandomHorizontalFlip(),
                                           transforms.ToTensor()]))
 
     valid_data = ImageFolder(root=valid_dir,
