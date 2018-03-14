@@ -125,6 +125,7 @@ class CatDog():
         self.weight_norm = params["weight_norm"]
         self.weight_decay = params["weight_decay"]
         self.optim = params["optim"]
+        self.filename = params["filename"]
         self.compile()
 
     def compile(self):
@@ -178,7 +179,6 @@ class CatDog():
 	most_uncertain_idx = preds.min(0)[1].data[0]
 	most_uncertain_prob = preds[most_uncertain_idx].data[0] + .5
 	return most_uncertain_idx, most_uncertain_prob
-	
 
 
     def predict(self, data_loader, test=False):
@@ -235,6 +235,7 @@ class CatDog():
 
         # Initialize tracked quantities
         train_loss, train_acc, valid_acc, test_acc = [], [], [], []
+        best_valid_acc = 0.
 
         # Train
         start = datetime.datetime.now()
@@ -273,6 +274,11 @@ class CatDog():
             valid_acc.append(self.predict(valid_loader, test=False) if valid_loader else -1)
             test_acc.append(self.predict(test_loader, test=False) if test_loader else -1)
 
+            # Save model weights if validation accuracy increases
+            if valid_acc[epoch] > best_valid_acc:
+		best_valid_acc = valid_acc[epoch]
+    	        torch.save(self.model.state_dict(), self.filename)
+
             # Print statistics
             track = dict(valid = valid_loader is not None,
                          test = test_loader is not None)
@@ -300,7 +306,8 @@ if __name__ == "__main__":
     	batch_norm = False,
     	weight_norm = False,
     	weight_decay = 0,
-        optim = "Adam"
+        optim = "Adam",
+        filename = "models/default"
     )
 
     # Image folders
@@ -325,18 +332,20 @@ if __name__ == "__main__":
     params["weight_norm"] = False
     params["optim"] = "SGD"
     params["learning_rate"] = 0.001
+    params["filename"] = "models/sgd_vanilla_lr_0.001"
     net = CatDog(params)
     print(params)
     train_loss, train_acc, valid_acc, test_acc = \
             net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)
     data = dict(train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc, test_acc=test_acc)
-    with open('stats/vanilla.pkl', 'wb') as fp:
+    with open('stats/sgd_vanilla_lr_0.001.pkl', 'wb') as fp:
 	pickle.dump(data, fp)
 
     params["batch_norm"] = True
     params["weight_norm"] = False
     params["optim"] = "SGD"
     params["learning_rate"] = 0.001
+    params["filename"] = "models/sgd_bn_lr_0.001"
     print(params)
     net = CatDog(params)
     train_loss, train_acc, valid_acc, test_acc = \
@@ -349,6 +358,7 @@ if __name__ == "__main__":
     params["weight_norm"] = False
     params["optim"] = "Adam"
     params["learning_rate"] = 0.001
+    params["filename"] = "models/adam_bn_lr_0.001"
     print(params)
     net = CatDog(params)
     train_loss, train_acc, valid_acc, test_acc = \
@@ -361,6 +371,7 @@ if __name__ == "__main__":
     params["weight_norm"] = False
     params["optim"] = "RMSProp"
     params["learning_rate"] = 0.001
+    params["filename"] = "models/rmsprop_bn_lr_0.001"
     print(params)
     net = CatDog(params)
     train_loss, train_acc, valid_acc, test_acc = \
@@ -373,6 +384,7 @@ if __name__ == "__main__":
     params["weight_norm"] = True
     params["learning_rate"] = 0.001
     params["optim"] = "Adam"
+    params["filename"] = "models/adam_wn_lr_0.001"
     print(params)
     net = CatDog(params)
     train_loss, train_acc, valid_acc, test_acc = \
@@ -385,6 +397,7 @@ if __name__ == "__main__":
     params["weight_norm"] = False
     params["learning_rate"] = 0.0001
     params["optim"] = "Adam"
+    params["filename"] = "models/adam_bn_lr_0.0001"
     print(params)
     net = CatDog(params)
     train_loss, train_acc, valid_acc, test_acc = \
@@ -397,6 +410,7 @@ if __name__ == "__main__":
     params["weight_norm"] = False
     params["learning_rate"] = 0.01
     params["optim"] = "Adam"
+    params["filename"] = "models/adam_bn_lr_0.01"
     print(params)
     net = CatDog(params)
     train_loss, train_acc, valid_acc, test_acc = \
@@ -410,6 +424,7 @@ if __name__ == "__main__":
     params["learning_rate"] = 0.001
     params["weight_decay"] = 0.5
     params["optim"] = "Adam"
+    params["filename"] = "models/adam_weight_decay_0.001_lr_0.001"
     print(params)
     net = CatDog(params)
     train_loss, train_acc, valid_acc, test_acc = \
