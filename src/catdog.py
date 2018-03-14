@@ -24,6 +24,7 @@ import collections
 from enum import Enum
 from utils import *
 import math
+import sys
 import matplotlib.pyplot as plt
 
 
@@ -36,9 +37,9 @@ class ConvNet(nn.Module):
 	# Model architecture
         self.arch = [32, 32, 'M',
                      64, 64, 'M',
-                     128, 128, 128, 'M',
-                     256, 256, 256, 'M',
-		     256, 256, 256, 'M']
+                     128, 128, 'M',
+                     256, 256, 'M',
+		     256, 256, 'M']
 	self.dropout = params["dropout"]
         self.batch_norm = params["batch_norm"]
 	self.weight_norm = params["weight_norm"]
@@ -70,7 +71,7 @@ class ConvNet(nn.Module):
 	# Weight normalization
 	if self.weight_norm:
 	    for m in self.modules():
-                if isinstance(m, nn.Linear):
+                if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
 		    m.apply(nn.utils.weight_norm)	
 
     def forward(self, x):
@@ -106,8 +107,6 @@ class ConvNet(nn.Module):
                 conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)
                 if self.batch_norm:
                     layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]
-                elif self.weight_norm:
-                    layers += [nn.utils.weight_norm(conv2d), nn.ReLU(inplace=True)]
                 else:
                     layers += [conv2d, nn.ReLU(inplace=True)]
                 in_channels = v
@@ -133,6 +132,10 @@ class CatDog():
     def compile(self):
         """Initialize model parameters"""
 
+	if self.batch_norm and self.weight_norm:
+	    print("Error! Can't have both batch and weight norm")
+	    sys.exit()
+
         # Initialize model
 	params = dict(dropout=self.dropout,
 		      batch_norm=self.batch_norm, 
@@ -152,13 +155,25 @@ class CatDog():
             self.loss_fn = self.loss_fn.cuda()
 
 
-    def predict(self, data_loader):
+    def top_misclassified_per_batch(self, x, y, y_pred):
+	"""Get top misclassified examples in a batch"""
+
+	misclassified_idx = torch.nonzero(y_pred.max(1)[1] != y).view(-1).data
+	probs = nn.Softmax(dim=1)(y_pred).max(1)[0].data
+	misclassified_probs = probs.index_select(0, misclassified_idx)
+	top_prob = misclassified_probs.max(0)[0]
+	top_idx = misclassified_probs.max(0)[1]
+	return top_idx, top_prob
+
+
+    def predict(self, data_loader, test=False):
         """Evaluate model on dataset"""
 
         # Set model phase
         self.model.train(False)
 
         correct = 0.
+	top_prob, top_img = 0., torch.zeros(64,64,3)
         for batch_idx, (x, y) in enumerate(data_loader):
             # Forward pass
             x, y = Variable(x), Variable(y)
@@ -169,7 +184,19 @@ class CatDog():
 
             # Predicts
             y_pred = self.model(x)
+
+	    # Get top misclassified example in this batch
+	    if test:
+		idx, prob = self.top_misclassified_per_batch(x, y, y_pred)
+		if prob[0] > top_prob:
+		    top_idx = idx
+		    top_prob = prob[0]
+		    top_img = x[idx].view(3,64,64).data.cpu().permute(2,1,0)
+
+	    # Accuracy meter
             correct += float((y_pred.max(1)[1] == y).sum().data[0]) / data_loader.batch_size
+
+	plt.imsave('misclassified_{:.4f}.png'.format(top_prob), top_img)
 
         # Compute accuracy
         acc = correct / len(data_loader)
@@ -218,9 +245,9 @@ class CatDog():
 
             # Save losses and accuracies
             train_loss.append(losses.avg)
-            train_acc.append(self.predict(train_loader))
-            valid_acc.append(self.predict(valid_loader) if valid_loader else -1)
-            test_acc.append(self.predict(test_loader) if test_loader else -1)
+            train_acc.append(self.predict(train_loader, test=False))
+            valid_acc.append(self.predict(valid_loader, test=False) if valid_loader else -1)
+            test_acc.append(self.predict(test_loader, test=True) if test_loader else -1)
 
             # Print statistics
             track = dict(valid = valid_loader is not None,
@@ -241,12 +268,12 @@ if __name__ == "__main__":
     # Model parameters
     params = dict(
     	nb_epochs = 50,
-    	batch_size = 128,
+    	batch_size = 64,
 	train_len = 15000,
-    	learning_rate = 0.003,
+    	learning_rate = 1e-4,
     	momentum = 0.9,
-	dropout = False,
-    	batch_norm = True,
+	dropout = True,
+    	batch_norm = False,
     	weight_norm = False,
     	weight_decay = 0
     )

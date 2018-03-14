@@ -11,7 +11,7 @@ Authors:
 
 from __future__ import print_function
 
-import sys
+import os, sys
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -19,8 +19,33 @@ import numpy as np
 import torch
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 import pickle
+from matplotlib.ticker import MaxNLocator
+
+
+class TestImageFolder(Dataset):
+    """Test image folder to retrieve image filename from loader"""
+
+    def __init__(self, root, transform=None):
+        images = []
+        for filename in os.listdir(root):
+            if filename.endswith('jpg'):
+                images.append('{}'.format(filename))
+
+        self.root = root
+        self.imgs = images
+        self.transform = transform
+
+    def __getitem__(self, index):
+        filename = self.imgs[index]
+        img = Image.open(os.path.join(self.root, filename))
+        if self.transform is not None:
+            img = self.transform(img)
+        return img, filename
+
+    def __len__(self):
+        return len(self.imgs)
 
 
 def progress_bar(count, total, status=""):
@@ -85,6 +110,24 @@ def plot_per_epoch(d, d_label, title):
     ax.set_title(title)
     plt.show()
 
+def plots_per_epoch(d, d_labels, tracked_label, title):
+    """ Plot graph; takes multiple sets of points """
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    colors = ["b", "r", "g", "m", "c", "y"]
+    for i in range(len(d)):
+        ax.plot(range(1,len(d[i])+1), d[i], c=colors[i], 
+            marker="o", label=d_labels[i])
+    plt.legend(loc="lower center")
+    ax.set_xlabel("$N$")
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.set_ylabel(tracked_label)
+    ax.set_title(title)
+    plt.savefig('1b.png')
+    plt.show()
+
+
 def unpickle_mnist(filename):
     """Load data into training/valid/test sets"""
 
@@ -123,7 +166,7 @@ def load_catdog(dirs, batch_size):
     train_data = ImageFolder(root=dirs["train"],
             transform=transforms.Compose([transforms.Resize((64, 64)),
                                           transforms.RandomRotation(10),
-                                          transforms.RandomHorizontalFlip(),
+                                          transforms.RandomVerticalFlip(),
                                           transforms.ToTensor()]))
 
     valid_data = ImageFolder(root=dirs["valid"],
