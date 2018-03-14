@@ -119,12 +119,12 @@ def plots_per_epoch(d, d_labels, tracked_label, title):
     for i in range(len(d)):
         ax.plot(range(1,len(d[i])+1), d[i], c=colors[i], 
             marker="o", label=d_labels[i])
-    plt.legend(loc="lower center")
-    ax.set_xlabel("$N$")
+    plt.legend(loc="lower right")
+    ax.set_xlabel("Epoch")
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_ylabel(tracked_label)
     ax.set_title(title)
-    plt.savefig('1b.png')
+    plt.savefig('batch.png')
     plt.show()
 
 
@@ -163,19 +163,25 @@ def load_mnist(data_filename, batch_size):
 def load_catdog(dirs, batch_size):
     """Load data from image folders"""
 
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
     train_data = ImageFolder(root=dirs["train"],
             transform=transforms.Compose([transforms.Resize((64, 64)),
                                           transforms.RandomRotation(10),
+					  transforms.RandomHorizontalFlip(),
                                           transforms.RandomVerticalFlip(),
-                                          transforms.ToTensor()]))
+                                          transforms.ToTensor(),
+					  normalize]))
 
     valid_data = ImageFolder(root=dirs["valid"],
             transform=transforms.Compose([transforms.Resize((64, 64)),
-                                          transforms.ToTensor()]))
+                                          transforms.ToTensor(),
+			                  normalize]))
 
     test_data = ImageFolder(root=dirs["test"],
             transform=transforms.Compose([transforms.Resize((64, 64)),
-                                          transforms.ToTensor()]))
+                                          transforms.ToTensor(),
+					  normalize]))
 
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(valid_data, batch_size=batch_size, shuffle=True)

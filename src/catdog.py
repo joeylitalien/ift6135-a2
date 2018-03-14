@@ -35,11 +35,10 @@ class ConvNet(nn.Module):
         super(ConvNet, self).__init__()
 	
 	# Model architecture
-        self.arch = [32, 32, 'M',
-                     64, 64, 'M',
-                     128, 128, 'M',
-                     256, 256, 'M',
-		     256, 256, 'M']
+        self.arch = [16, 16, 'M',
+                     32, 32, 'M',
+                     64, 64, 64, 'M',
+                     128, 128, 128, 'M']
 	self.dropout = params["dropout"]
         self.batch_norm = params["batch_norm"]
 	self.weight_norm = params["weight_norm"]
@@ -48,21 +47,19 @@ class ConvNet(nn.Module):
 	# Dropout
 	if self.dropout:
 	    self.clf = nn.Sequential(
+		nn.Linear(2048, 1024),
+		nn.ReLU(inplace=True),
+		nn.Dropout(p=0.5),
 		nn.Linear(1024, 512),
 		nn.ReLU(inplace=True),
 		nn.Dropout(p=0.5),
-		nn.Linear(512, 128),
-		nn.ReLU(inplace=True),
-		nn.Dropout(p=0.5),
-		nn.Linear(128, 2)
+		nn.Linear(512, 2)
 	    )
 	else:
 	    self.clf = nn.Sequential(
-		nn.Linear(1024, 512),
+		nn.Linear(2048, 512),
 		nn.ReLU(inplace=True),
-		nn.Linear(512, 128),
-		nn.ReLU(inplace=True),
-		nn.Linear(128, 2)
+		nn.Linear(512, 2)
 	    )
 
 	# He initialization
@@ -127,6 +124,7 @@ class CatDog():
         self.batch_norm = params["batch_norm"]
         self.weight_norm = params["weight_norm"]
         self.weight_decay = params["weight_decay"]
+        self.optim = params["optim"]
         self.compile()
 
     def compile(self):
@@ -145,7 +143,16 @@ class CatDog():
         # Set loss function and gradient-descend optimizer
         self.loss_fn = nn.CrossEntropyLoss()
 	rescaled_lambda = self.weight_decay * self.batch_size / self.train_len
-        self.optimizer = optim.Adam(self.model.parameters(),
+        if self.optim is "SGD":
+            self.optimizer = optim.SGD(self.model.parameters(),
+                            lr=self.learning_rate,
+			    weight_decay=rescaled_lambda)
+        elif self.optim is "RMSProp":
+            self.optimizer = optim.SGD(self.model.parameters(),
+                            lr=self.learning_rate,
+			    weight_decay=rescaled_lambda)
+        else:
+            self.optimizer = optim.Adam(self.model.parameters(),
                             lr=self.learning_rate,
 			    weight_decay=rescaled_lambda)
 
@@ -165,6 +172,14 @@ class CatDog():
 	top_idx = misclassified_probs.max(0)[1]
 	return top_idx, top_prob
 
+    def most_uncertain_per_batch(self, y_pred):
+	"""Get most uncertain example (pred ~= 50%) in a batch"""
+	preds = (y_pred[:,0] - .5).abs()
+	most_uncertain_idx = preds.min(0)[1].data[0]
+	most_uncertain_prob = preds[most_uncertain_idx].data[0] + .5
+	return most_uncertain_idx, most_uncertain_prob
+	
+
 
     def predict(self, data_loader, test=False):
         """Evaluate model on dataset"""
@@ -174,6 +189,7 @@ class CatDog():
 
         correct = 0.
 	top_prob, top_img = 0., torch.zeros(64,64,3)
+	mu_prob, mu_img = 1, torch.zeros(64,64,3)
         for batch_idx, (x, y) in enumerate(data_loader):
             # Forward pass
             x, y = Variable(x), Variable(y)
@@ -193,10 +209,18 @@ class CatDog():
 		    top_prob = prob[0]
 		    top_img = x[idx].view(3,64,64).data.cpu().permute(2,1,0)
 
+		idx, prob = self.most_uncertain_per_batch(y_pred)
+		if prob < mu_prob:
+		    mu_idx = idx
+		    mu_prob = prob
+		    mu_img = x[idx].view(3,64,64).data.cpu().permute(2,1,0)
+
 	    # Accuracy meter
             correct += float((y_pred.max(1)[1] == y).sum().data[0]) / data_loader.batch_size
-
-	plt.imsave('misclassified_{:.4f}.png'.format(top_prob), top_img)
+	
+	if test:
+		plt.imsave('misclassified_{:.4f}.png'.format(top_prob), top_img)
+		plt.imsave('uncertain_{:.4f}.png'.format(mu_prob), mu_img)
 
         # Compute accuracy
         acc = correct / len(data_loader)
@@ -247,7 +271,7 @@ class CatDog():
             train_loss.append(losses.avg)
             train_acc.append(self.predict(train_loader, test=False))
             valid_acc.append(self.predict(valid_loader, test=False) if valid_loader else -1)
-            test_acc.append(self.predict(test_loader, test=True) if test_loader else -1)
+            test_acc.append(self.predict(test_loader, test=False) if test_loader else -1)
 
             # Print statistics
             track = dict(valid = valid_loader is not None,
@@ -267,15 +291,16 @@ if __name__ == "__main__":
 
     # Model parameters
     params = dict(
-    	nb_epochs = 50,
-    	batch_size = 64,
+    	nb_epochs = 100,
+    	batch_size = 50,
 	train_len = 15000,
-    	learning_rate = 1e-4,
+    	learning_rate = 0.001,
     	momentum = 0.9,
 	dropout = True,
     	batch_norm = False,
     	weight_norm = False,
-    	weight_decay = 0
+    	weight_decay = 0,
+        optim = "Adam"
     )
 
     # Image folders
@@ -289,6 +314,116 @@ if __name__ == "__main__":
     train_loader, valid_loader, test_loader = load_catdog(dirs, params["batch_size"])
 
     # Build deep net and train
+    #net = CatDog(params)
+    #train_loss, train_acc, valid_acc, test_acc = \
+    #        net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)
+    #data = dict(train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc, test_acc=test_acc)
+    #with open('dropout.pkl', 'wb') as fp:
+    #	pickle.dump(data, fp)
+
+    params["batch_norm"] = False
+    params["weight_norm"] = False
+    params["optim"] = "SGD"
+    params["learning_rate"] = 0.001
+    net = CatDog(params)
+    print(params)
+    train_loss, train_acc, valid_acc, test_acc = \
+            net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)
+    data = dict(train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc, test_acc=test_acc)
+    with open('stats/vanilla.pkl', 'wb') as fp:
+	pickle.dump(data, fp)
+
+    params["batch_norm"] = True
+    params["weight_norm"] = False
+    params["optim"] = "SGD"
+    params["learning_rate"] = 0.001
+    print(params)
     net = CatDog(params)
     train_loss, train_acc, valid_acc, test_acc = \
             net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)
+    data = dict(train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc, test_acc=test_acc)
+    with open('stats/sgd_bn_lr_0.001.pkl', 'wb') as fp:
+	pickle.dump(data, fp)
+
+    params["batch_norm"] = True
+    params["weight_norm"] = False
+    params["optim"] = "Adam"
+    params["learning_rate"] = 0.001
+    print(params)
+    net = CatDog(params)
+    train_loss, train_acc, valid_acc, test_acc = \
+            net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)
+    data = dict(train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc, test_acc=test_acc)
+    with open('stats/adam_bn_lr_0.001.pkl', 'wb') as fp:
+	pickle.dump(data, fp)
+
+    params["batch_norm"] = True
+    params["weight_norm"] = False
+    params["optim"] = "RMSProp"
+    params["learning_rate"] = 0.001
+    print(params)
+    net = CatDog(params)
+    train_loss, train_acc, valid_acc, test_acc = \
+            net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)
+    data = dict(train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc, test_acc=test_acc)
+    with open('stats/rmsprop_bn_lr_0.001.pkl', 'wb') as fp:
+	pickle.dump(data, fp)
+
+    params["batch_norm"] = False
+    params["weight_norm"] = True
+    params["learning_rate"] = 0.001
+    params["optim"] = "Adam"
+    print(params)
+    net = CatDog(params)
+    train_loss, train_acc, valid_acc, test_acc = \
+            net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)
+    data = dict(train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc, test_acc=test_acc)
+    with open('stats/adam_wn_lr_0.001.pkl', 'wb') as fp:
+	pickle.dump(data, fp)
+
+    params["batch_norm"] = True
+    params["weight_norm"] = False
+    params["learning_rate"] = 0.0001
+    params["optim"] = "Adam"
+    print(params)
+    net = CatDog(params)
+    train_loss, train_acc, valid_acc, test_acc = \
+            net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)
+    data = dict(train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc, test_acc=test_acc)
+    with open('stats/adam_bn_lr_0.0001.pkl', 'wb') as fp:
+	pickle.dump(data, fp)
+
+    params["batch_norm"] = True
+    params["weight_norm"] = False
+    params["learning_rate"] = 0.01
+    params["optim"] = "Adam"
+    print(params)
+    net = CatDog(params)
+    train_loss, train_acc, valid_acc, test_acc = \
+            net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)
+    data = dict(train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc, test_acc=test_acc)
+    with open('stats/adam_bn_lr_0.01.pkl', 'wb') as fp:
+	pickle.dump(data, fp)
+
+    params["batch_norm"] = True
+    params["weight_norm"] = False
+    params["learning_rate"] = 0.001
+    params["weight_decay"] = 0.5
+    params["optim"] = "Adam"
+    print(params)
+    net = CatDog(params)
+    train_loss, train_acc, valid_acc, test_acc = \
+            net.train(params["nb_epochs"], train_loader, valid_loader, test_loader)
+    data = dict(train_loss=train_loss, train_acc=train_acc, valid_acc=valid_acc, test_acc=test_acc)
+    with open('stats/adam_weight_decay_0.001_lr_0.001.pkl', 'wb') as fp:
+	pickle.dump(data, fp)
+
+
+    """
+    with open("weight_norm_dp.pkl", "rb") as fp:
+	data = pickle.load(fp)
+
+    plots_per_epoch([data["train_acc"], data["valid_acc"]], ["Train", "Valid"], "Accuracy", "Dogs vs. Cats Accuracy for Batch Norm")
+    """
+
+    
